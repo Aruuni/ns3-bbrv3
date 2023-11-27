@@ -349,13 +349,6 @@ class TcpBbr : public TcpCongestionOps
      */
     void bbr_update_congestion_signals(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, struct bbr_context *ctx);
 
-    /**
-     * \brief Updates control parameters congestion windowm, pacing rate, send quantum.
-     * \param tcb the socket state.
-     * \param rs rate sample.
-     */
-    void UpdateControlParameters(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
-
     void bbr_check_loss_too_high_in_startup(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
     void bbr_handle_queue_too_high_in_startup(Ptr<TcpSocketState> tcb);
