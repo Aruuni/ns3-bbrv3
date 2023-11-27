@@ -267,7 +267,7 @@ class TcpBbr : public TcpCongestionOps
 
     uint32_t bbr_target_inflight(Ptr<TcpSocketState> tcb );
 
-    uint32_t bbr_inflight_with_headroom(Ptr<TcpSocketState> tcb);
+    uint32_t bbr_inflight_with_headroom();
 
     void bbr_bound_cwnd_for_inflight_model(Ptr<TcpSocketState> tcb);
 
@@ -558,7 +558,7 @@ class TcpBbr : public TcpCongestionOps
 
     const double bbr_ecn_reprobe_gain = 1 / 2;
 
-    const double bbr_loss_thresh = 0.02;
+    const double bbr_loss_thresh = 2/100;
 
     const double bbr_ecn_thresh = 0.5;
 
