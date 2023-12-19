@@ -21,7 +21,7 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr" };
+std::vector<std::string> cca = { "TcpBbr"  , "TcpBbr" }; // // }; //
 //std::vector<std::string> cca = { "TcpBbr"  };
 //, TcpCubic TcpBbr
 std::vector<std::string> cwndPlotFilesnames = { };
@@ -31,15 +31,18 @@ std::vector<std::string> rwndPlotFilesnames = { };
 std::vector<std::string> goodputPlotFilesnames = { };
 std::vector<std::string> bytesInFlightFilesnames = { };
 std::vector<std::string> packetDropFilesnames = { };
-
+std::vector<std::string> inflightHiFilenames = { };
+std::vector<std::string> pacingPlotFilesnames = { };
+std::vector<std::string> wildcardFilenames = { };
+std::vector<std::string> rtPropPlotFilesnames = { };
 
 double startTime = 0.1; // in seconds
-double startOffset = 5; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
+double startOffset = 0; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
 int PORT = 50001;
-Time stopTime = Seconds(20);
+Time stopTime = Seconds(45);
 uint packetSize = 1460;
 std::vector<std::string> colors = { "blue", "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
-std::vector<std::string> colors2 = { "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray", "blue" };
+std::vector<std::string> colors2 = {  "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray", "blue" };
 double ReadingResolution = 0.1;
 AsciiTraceHelper ascii;
 uint32_t bdp_multiplier = 5;
@@ -140,6 +143,85 @@ TraceCwnd(
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
                                   MakeBoundCallback(&CwndTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-cwnd.csv"), cca));
     cwndPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-cwnd.csv");
+}
+
+static void
+PacingTracer(
+    Ptr<OutputStreamWrapper> stream, 
+    std::string cca,  
+    DataRate, 
+    DataRate newval
+    )
+{
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << (double)newval.GetBitRate() / (double)1000000<< std::endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
+}
+void
+TracePacing(
+    uint32_t nodeID, 
+    std::string cca
+    )
+{
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
+                                  "/$ns3::TcpL4Protocol/SocketList/0/PacingRate", 
+                                  MakeBoundCallback(&PacingTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-pacing.csv"), cca));
+    pacingPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-pacing.csv");
+}
+
+
+//////////////////////////////////
+//      INFLIGHT HI             //
+//////////////////////////////////
+static void
+wildcardTracer(
+    Ptr<OutputStreamWrapper> stream, 
+    std::string cca,  
+    uint32_t, 
+    uint32_t newval
+    )
+{
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval /* / packetSize */ << std::endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
+}
+void
+TraceWildCard(
+    uint32_t nodeID, 
+    std::string cca
+    )
+{
+    ///NodeList/[i]/$ns3::TcpL4Protocol/SocketList/[i]/CongestionOps/$ns3::TcpBbr
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
+                                  "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/wildcard", 
+                                  MakeBoundCallback(&wildcardTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-wildcard.csv"), cca));
+    wildcardFilenames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-wildcard.csv");
+}
+
+
+
+//////////////////////////////////
+//          RT PROP              //
+//////////////////////////////////
+void
+RTpropTracer(
+    Ptr<OutputStreamWrapper> stream,  
+    Time oldval, 
+    Time newval
+    )
+{
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
+}
+void
+TraceRTprop(
+    uint32_t nodeID, 
+    std::string cca
+    )
+{
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
+                                  "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/rt_prop", 
+                                  MakeBoundCallback(&RTpropTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-rtprop.csv")));
+    rtPropPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-rtprop.csv");
+
 }
 
 //////////////////////////////////
@@ -543,6 +625,9 @@ main(
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceCwnd,  senders.Get(i)->GetId(), cca[i]);
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTT,  senders.Get(i)->GetId(), cca[i]);
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &BytesInFlightTrace,  senders.Get(i)->GetId(), cca[i]);
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceWildCard,  senders.Get(i)->GetId(), cca[i]);
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TracePacing,  senders.Get(i)->GetId(), cca[i]);
+        //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTprop,  senders.Get(i)->GetId(), cca[i]);
         //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &RWNDTrace,  senders.Get(i)->GetId(), cca[i]);
         //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &packetDropTracer,  senders.Get(i)->GetId(), cca[i]);
 
@@ -588,10 +673,13 @@ main(
 
 
     generatePlot(cwndPlotFilesnames, "Congestion Window", "Cwnd (packets)");
+    generatePlot(wildcardFilenames, "wildcard", "?");
     generatePlot(rttPlotFilesnames, "Round Trip Time", "RTT (ms)");
     generatePlot(throughputPlotFilesnames, "Throughput", "Throughput (Mbps)");
     generatePlot(goodputPlotFilesnames, "Goodput", "Goodput (Mbps)");
+    generatePlot(pacingPlotFilesnames, "Pacing", "Pacing (Mbps)");
     //generatePlot(rwndPlotFilesnames, "RWND", "RWND (bytes)");
+    generatePlot(rtPropPlotFilesnames, "RT Propagation", "RT Propagation (ms)");
     generatePlot(bytesInFlightFilesnames, "BytesInFlight", "BytesInFlight (bytes)");
     //generatePlot(packetDropFilesnames , "Packets Dropped", "Packets (segments)");
     generateCwndInflight(cwndPlotFilesnames, bytesInFlightFilesnames, "Congestion Window and Bytes In Flight", "Bytes");
@@ -608,12 +696,13 @@ main(
             remove((rttPlotFilesnames[i]).c_str());
             remove((throughputPlotFilesnames[i]).c_str());
             //remove((rwndPlotFilesnames[i]).c_str());
+            remove((pacingPlotFilesnames[i]).c_str());
             remove((goodputPlotFilesnames[i]).c_str());
             remove((bytesInFlightFilesnames[i]).c_str());
+            //remove((wildcardFilenames[i]).c_str());
             //remove((packetDropFilesnames[i]).c_str());
         }
     remove((temp[0]).c_str());
     exit(0);
 }
-
 

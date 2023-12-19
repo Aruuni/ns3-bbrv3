@@ -106,6 +106,11 @@ class TcpBbr : public TcpCongestionOps
      */
     static const char* const BbrModeName[BBR_PROBE_RTT + 1];
 
+
+    /**
+     * \brief Literal names of cycle modes for use in log messages
+     */
+    static const char* const BbrCycleName[BBR_PROBE_RTT + 1];
     /**
      * Assign a fixed random variable stream number to the random variables
      * used by this model.
@@ -150,7 +155,7 @@ class TcpBbr : public TcpCongestionOps
 
     bool bbr_check_time_to_probe_bw(Ptr<TcpSocketState> tcb);
 
-    bool bbr_check_time_to_cruise(Ptr<TcpSocketState> tcb, uint32_t inflight, DataRate bw);
+    bool bbr_check_time_to_cruise(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, DataRate bw);  
 
 
     void bbr_start_bw_probe_up(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, const struct bbr_context* ctx);
@@ -164,6 +169,8 @@ class TcpBbr : public TcpCongestionOps
     bool bbr_has_elapsed_in_phase(Ptr<TcpSocketState> tcb, Time interval);
 
     bool bbr_is_reno_coexistence_probe_time(Ptr<TcpSocketState> tcb);
+
+    uint32_t bbr_probe_rtt_cwnd(Ptr<TcpSocketState> tcb);
 
     void bbr_update_cycle_phase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, const struct bbr_context *ctx);
 
@@ -431,7 +438,7 @@ class TcpBbr : public TcpCongestionOps
 
   private:
     //  u32	min_rtt_us;	    /* min RTT in min_rtt_win_sec window */
-    Time m_rtProp{Time::Max()}; //!< Estimated two-way round-trip propagation delay of the path, estimated from the windowed minimum recent round-trip delay sample.
+    TracedValue<Time>  m_rtProp{Time::Max()}; //!< Estimated two-way round-trip propagation delay of the path, estimated from the windowed minimum recent round-trip delay sample.
     //  u32	min_rtt_stamp;  /* timestamp of min_rtt_us */
     Time m_rtPropStamp{Seconds(0)}; //!< The wall clock time at which the current BBR.RTProp sample was obtained
     //  u32	probe_rtt_done_stamp;   /* end time for BBR_PROBE_RTT mode */
@@ -507,17 +514,17 @@ class TcpBbr : public TcpCongestionOps
 	// u32	undo_inflight_hi;    /* inflight_hi before latest losses */
     uint32_t m_undoInflightHi{0};       //!< inflight_hi before latest losses
 	// u32	bw_latest;	 /* max delivered bw in last round trip */
-    DataRate m_bwLatest{0};         //!< Maximum delivered bandwidth in last round trip
+    DataRate m_bwLatest{std::numeric_limits<int>::max ()};         //!< Maximum delivered bandwidth in last round trip
 	// u32	bw_lo;		 /* lower bound on sending bandwidth */
-    DataRate m_bwLo{0};             //!< Lower bound on sending bandwidth
+    DataRate m_bwLo{std::numeric_limits<int>::max ()};             //!< Lower bound on sending bandwidth
 	// u32	bw_hi[2];	 /* max recent measured bw sample */
     DataRate bw_hi[2]{0, 0};
 	// u32	inflight_latest; /* max delivered data in last round trip */
     uint32_t m_inflightLatest{0};   //!< Maximum delivered data in last round trip
 	// u32	inflight_lo;	 /* lower bound of inflight data range */
-	uint32_t m_inflightLo{std::numeric_limits<int>::max ()};       //!< Lower bound of inflight data range
+	TracedValue<uint32_t> m_inflightLo{std::numeric_limits<int>::max ()};       //!< Lower bound of inflight data range
     // u32	inflight_hi;	 /* upper bound of inflight data range */
-    uint32_t m_inflightHi{std::numeric_limits<int>::max ()};       //!< Upper bound of inflight data range
+    TracedValue<uint32_t> m_inflightHi{std::numeric_limits<int>::max ()};       //!< Upper bound of inflight data range
 	// u32	bw_probe_up_cnt; /* packets delivered per inflight_hi incr */
     uint32_t m_bwProbeUpCount{0};   //!< Packets delivered per inflight_hi incr
 	// u32	bw_probe_up_acks;  /* packets (S)ACKed since inflight_hi incr */
@@ -547,12 +554,12 @@ class TcpBbr : public TcpCongestionOps
 	// 	loss_events_in_round:4,/* losses in STARTUP round */
     uint32_t m_lossEventsInRound{0}; //!< Losses in STARTUP round
 
-    
+    uint32_t bw_probe_up_rounds = 5;
     
     
     const Time bbr_min_rtt_win_sec = Seconds(10);
 
-    const Time bbr_probe_rtt_win  = Seconds(10);
+    const Time bbr_probe_rtt_win  = Seconds(5);
 
     const uint32_t bbr_bw_probe_max_rounds = 63;
 
@@ -564,7 +571,7 @@ class TcpBbr : public TcpCongestionOps
 
     const double bbr_beta = 1 * 30 / 100;
 
-    const double bbr_inflight_headroom = 1 * 15 / 100;
+    const double bbr_inflight_headroom = 15 / 100;
 
     const uint32_t bbr_full_loss_cnt = 6;
 
@@ -583,6 +590,10 @@ class TcpBbr : public TcpCongestionOps
     const uint32_t bbr_cwnd_gain  = 2;
 
     const Time bbr_probe_rtt_mode_ms = MilliSeconds(200);
+
+
+
+     TracedValue<uint32_t> wildcard{0};
 
 };
 
