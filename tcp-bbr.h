@@ -134,29 +134,10 @@ class TcpBbr : public TcpCongestionOps
     Ptr<TcpCongestionOps> Fork() override;
 
   protected:
-    /**
-     * \brief TcpBbrCheckGainValuesTest friend class (for tests).
-     * \relates TcpBbrCheckGainValuesTest
-     */
-    friend class TcpBbrCheckGainValuesTest;
-
-    /**
-     * \brief Advances pacing gain using cycle gain algorithm, while in BBR_PROBE_BW state
-     */
-    void AdvanceCyclePhase();
-
-    /**
-     * \brief Checks whether to advance pacing gain in BBR_PROBE_BW state,
-     *  and if allowed calls AdvanceCyclePhase ()
-     * \param tcb the socket state.
-     * \param rs rate sample.
-     */
-    void CheckCyclePhase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
     bool bbr_check_time_to_probe_bw(Ptr<TcpSocketState> tcb);
 
     bool bbr_check_time_to_cruise(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, DataRate bw);  
-
 
     void bbr_start_bw_probe_up(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, const struct bbr_context* ctx);
 
@@ -193,39 +174,6 @@ class TcpBbr : public TcpCongestionOps
     bool bbr_full_bw_reached();
 
     /**
-     * \brief This method handles the steps related to the ProbeRTT state
-     * \param tcb the socket state.
-     * \param rs rate sample.
-     */
-    void CheckProbeRTT(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
-
-    /**
-     * \brief Updates variables specific to BBR_DRAIN state
-     */
-    void EnterDrain();
-
-    /**
-     * \brief Updates variables specific to BBR_PROBE_BW state
-     */
-    void EnterProbeBW();
-
-    /**
-     * \brief Updates variables specific to BBR_PROBE_RTT state
-     */
-    void EnterProbeRTT();
-
-    /**
-     * \brief Updates variables specific to BBR_STARTUP state
-     */
-    void EnterStartup();
-
-    /**
-     * \brief Called on exiting from BBR_PROBE_RTT state, it eithers invoke EnterProbeBW () or
-     * EnterStartup ()
-     */
-    void ExitProbeRTT();
-
-    /**
      * \brief Gets BBR state.
      * \return returns BBR state.
      */
@@ -244,25 +192,12 @@ class TcpBbr : public TcpCongestionOps
     double GetCwndGain();
 
     /**
-     * \brief Handles the steps for BBR_PROBE_RTT state.
-     * \param tcb the socket state.
-     */
-    void HandleProbeRTT(Ptr<TcpSocketState> tcb);
-
-    /**
-     * \brief Updates pacing rate if socket is restarting from idle state.
-     * \param tcb the socket state.
-     * \param rs rate sample.
-     */
-    void HandleRestartFromIdle(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
-
-    /**
      * \brief Estimates the target value for congestion window
      * \param tcb  the socket state.
      * \param gain cwnd gain.
      * \return returns congestion window based on max bandwidth and min RTT.
      */
-    uint32_t InFlight(Ptr<TcpSocketState> tcb, DataRate bw, double gain);
+    uint32_t bbr_inflight(Ptr<TcpSocketState> tcb, DataRate bw, double gain);
 
     bool bbr_is_inflight_too_high(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
@@ -295,14 +230,6 @@ class TcpBbr : public TcpCongestionOps
      * \brief Initializes the round counting related variables.
      */
     void InitRoundCounting();
-
-    /**
-     * \brief Checks whether to move to next value of pacing gain while in BBR_PROBE_BW.
-     * \param tcb the socket state.
-     * \param rs  rate sample.
-     * \returns true if want to move to next value otherwise false.
-     */
-    bool IsNextCyclePhase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
     /**
      * \brief Modulates congestion window in CA_RECOVERY.
@@ -450,7 +377,6 @@ class TcpBbr : public TcpCongestionOps
     
     
     // Time m_probeRtPropStamp{Seconds(0)}; //!< The wall clock time at which the current BBR.RTProp sample was obtained.
-    
     
 
     BbrMode_t m_state{BbrMode_t::BBR_STARTUP}; //!< Current state of BBR state machine

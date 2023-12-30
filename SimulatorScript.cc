@@ -21,7 +21,7 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr"  , "TcpBbr" }; // // }; //
+std::vector<std::string> cca = { "TcpBbr"  };  // , "TcpBbr" }; 
 //std::vector<std::string> cca = { "TcpBbr"  };
 //, TcpCubic TcpBbr
 std::vector<std::string> cwndPlotFilesnames = { };
@@ -385,7 +385,8 @@ generatePlot(
         fprintf(gnuplotPipe, "set key right top vertical\n");
         std::string plotCommand = "plot ";
         for (uint32_t i = 0; i < plotFilesnames.size(); i++) {
-        plotCommand += "\"" + plotFilesnames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "\" with lines lw 0.7 lc '" + colors[i] + "'";
+            // lines linepoints points steps
+        plotCommand += "\"" + plotFilesnames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "\" with steps  lw 0.7 lc '" + colors[i] + "'";
         if (i != plotFilesnames.size() - 1) 
             plotCommand += ", ";
         }  
@@ -424,9 +425,9 @@ generateCwndInflight(
         fprintf(gnuplotPipe, "set key right top vertical\n");
         std::string plotCommand = "plot ";
         for (uint32_t i = 0; i < cwndFileNames.size(); i++) {
-            plotCommand += "\"" + cwndFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "cwnd" + "\" with lines lw 0.7 lc '" + colors[i] + "'";
+            plotCommand += "\"" + cwndFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "cwnd" + "\" with steps lw 0.7 lc '" + colors[i] + "'";
             plotCommand += ", ";
-            plotCommand += "\"" + inflightFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "bif" + "\" with lines lw 0.7 lc '" + colors2[i] + "'";
+            plotCommand += "\"" + inflightFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "bif" + "\" with steps lw 0.7 lc '" + colors2[i] + "'";
             if (i != cwndFileNames.size() - 1)
                 plotCommand += ", ";
         }
@@ -499,9 +500,9 @@ main(
 {
     // linux default send 4096   16384   4194304
     // linux default recv 4096   131072  6291456
-    Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304/4));
+    Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
     //Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(16384));
-    Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(4194304/4));
+    Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(4194304));
     //Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(131072));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     Config::SetDefault("ns3::TcpSocket::InitialSlowStartThreshold", UintegerValue(10)); 
@@ -696,7 +697,7 @@ main(
             remove((rttPlotFilesnames[i]).c_str());
             remove((throughputPlotFilesnames[i]).c_str());
             //remove((rwndPlotFilesnames[i]).c_str());
-            remove((pacingPlotFilesnames[i]).c_str());
+            //remove((pacingPlotFilesnames[i]).c_str());
             remove((goodputPlotFilesnames[i]).c_str());
             remove((bytesInFlightFilesnames[i]).c_str());
             //remove((wildcardFilenames[i]).c_str());
@@ -705,4 +706,5 @@ main(
     remove((temp[0]).c_str());
     exit(0);
 }
+
 
