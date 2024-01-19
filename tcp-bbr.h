@@ -345,12 +345,6 @@ class TcpBbr : public TcpCongestionOps
     void UpdateTargetCwnd(Ptr<TcpSocketState> tcb);
 
     /**
-     * \brief Sets BBR state.
-     * \param state BBR state.
-     */
-    void SetBbrState(BbrMode_t state);
-
-    /**
      * \brief Find Cwnd increment based on ack aggregation.
      * \return uint32_t aggregate cwnd.
      */
@@ -470,7 +464,7 @@ class TcpBbr : public TcpCongestionOps
     // 	rounds_since_probe:8,  /* packet-timed rounds since probed bw */
     bool m_roundsSinceProbe{false}; //!< Packet-timed rounds since probed bw
 	// 	loss_round_start:1,    /* loss_round_delivered round trip? */
-    bool m_lossRoundStart{false};       //!< Loss round delivered round trip?
+    bool m_lossRoundStart{1};       //!< Loss round delivered round trip?
 	// 	loss_in_round:1,       /* loss marked in this round trip? */
     bool m_lossInRound{false};       //!< Loss marked in this round trip?
 	// 	ecn_in_round:1,	       /* ECN marked in this round trip? */
@@ -517,9 +511,9 @@ class TcpBbr : public TcpCongestionOps
 
     const Time bbr_probe_rtt_mode_ms = MilliSeconds(200);
 
+    bool startedAfter = false;
 
-
-     TracedValue<uint32_t> wildcard{0};
+    TracedValue<uint32_t> wildcard{0};
 
 };
 
