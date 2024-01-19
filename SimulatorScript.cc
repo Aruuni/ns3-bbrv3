@@ -14,14 +14,49 @@
 
 
 using namespace ns3;
+std::vector<std::string> colors = {
+    "#00FF0000", // Blue
+    "#00FF00FF", // Green
+    "#00FFA500", // Orange
+    "#00FF0000", // Red
+    "#00800080", // Purple
+    "#00A52A2A", // Brown
+    "#00000000", // Black
+    "#00FFFF00", // Yellow
+    "#00FFFFFF", // Cyan
+    "#00FF00FF", // Magenta
+    "#00808080"  // Gray
+};
 
+std::vector<std::string> colors2 = {
+    "#00006400", // Dark Green
+    "#008B0000", // Dark Red
+    "#00483D8B", // Dark Purple
+    "#008B4513", // Dark Brown
+    "#00A9A9A9", // Dark Gray
+    "#00ADD8E6", // Light Blue
+    "#00FFFFE0", // Light Yellow
+    "#00E0FFFF", // Light Cyan
+    "#00FFC0CB", // Light Magenta
+    "#00FFA500"  // Light Orange
+};
 // ./ns3 clean
 // ./ns3 configure --build-profile=optimized 
 // ./ns3
 
 
+/*
+CHEAT SHEET
+
+Config path for congestion control algorithm tracable values
+NodeList/[i]/$ns3::TcpL4Protocol/SocketList/[i]/CongestionOps/$ns3::TcpBbr
+
+
+
+*/
+
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr"  };  // , "TcpBbr" }; 
+std::vector<std::string> cca = { "TcpBbr"  }; // ,"TcpBbr"
 //std::vector<std::string> cca = { "TcpBbr"  };
 //, TcpCubic TcpBbr
 std::vector<std::string> cwndPlotFilesnames = { };
@@ -39,13 +74,13 @@ std::vector<std::string> rtPropPlotFilesnames = { };
 double startTime = 0.1; // in seconds
 double startOffset = 0; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
 int PORT = 50001;
-Time stopTime = Seconds(45);
+Time stopTime = Seconds(20);
 uint packetSize = 1460;
-std::vector<std::string> colors = { "blue", "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
-std::vector<std::string> colors2 = {  "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray", "blue" };
-double ReadingResolution = 0.1;
+
+
+std::vector<double> rxBytes;
 AsciiTraceHelper ascii;
-uint32_t bdp_multiplier = 5;
+uint32_t bdp_multiplier = 1;
 
 int bottleneckLinkDataRate = 10;
 int bottleneckLinkDelay = 5;
@@ -61,10 +96,47 @@ bool cleanup = true;
 bool plotScriptOut = false;
 bool progressLog = false;
 
+static void
+uint32Tracer(
+    Ptr<OutputStreamWrapper> stream, 
+    uint32_t, 
+    uint32_t newval
+)
+{
+    *stream->GetStream() 
+        << Simulator::Now().GetSeconds() 
+        << ", " 
+        << newval 
+        << std::endl;
+}
 
-//////////////////////////////////
-//          THROUGHPUT          //
-//////////////////////////////////
+static void
+DataRateTracer(
+    Ptr<OutputStreamWrapper> stream, 
+    DataRate, 
+    DataRate newval
+)
+{
+    *stream->GetStream() 
+        << Simulator::Now().GetSeconds() 
+        << ", " << newval.GetBitRate() 
+        << std::endl;
+}
+
+static void
+TimeTracer(
+    Ptr<OutputStreamWrapper> stream, 
+    Time, 
+    Time newval
+)
+{
+    *stream->GetStream() 
+        << Simulator::Now().GetSeconds() 
+        << ", " 
+        << newval.GetMilliSeconds() 
+        << std::endl;
+}
+
 static void
 TraceThroughput(
     Ptr<FlowMonitor> monitor, 
@@ -72,7 +144,7 @@ TraceThroughput(
     uint32_t flowID, 
     uint32_t prevTxBytes, 
     Time prevTime 
-    ) 
+) 
 {
     FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
     FlowMonitor::FlowStats statsNode = stats[flowID];
@@ -80,27 +152,17 @@ TraceThroughput(
         << Simulator::Now().GetSeconds() 
         << ", "
         << 8 * (statsNode.txBytes - prevTxBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
-    << std::endl;
-    Simulator::Schedule(Seconds(ReadingResolution), &TraceThroughput, monitor, stream, flowID, statsNode.txBytes, Simulator::Now());
+        << std::endl;
+    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, stream, flowID, statsNode.txBytes, Simulator::Now());
 }
-
-//////////////////////////////////
-//           GOODPUT            //
-//////////////////////////////////
-
-std::vector<double> rxBytes;
 
 void ReceivedPacket(
     uint32_t flowID,
     Ptr<const Packet> p, 
     const Address& addr
-    )
+)
 {
 	rxBytes[flowID] += p->GetSize();
-    //if (flowID == 0)
-    //std::cout << "size of rx bytes " << std::to_string(flowID) << " "<< std::to_string(rxBytes[flowID])<< " Received packet of size " << p->GetSize() <<  " at time: " << Now().GetSeconds() << std::endl;
-    //if (Now().GetSeconds() > 25 && Now().GetSeconds() < 27 && flowID == 0)
-    //std::cout << "size of rx bytes " << std::to_string(flowID) << " "<< std::to_string(rxBytes[flowID])<< " Received packet of size " << p->GetSize() << " from " << addr << " at time: " << Now().GetSeconds() << std::endl;
 }
 
 static void
@@ -109,256 +171,113 @@ TraceGoodput(
     uint32_t flowID,
     uint32_t prevRxBytes,
     Time prevTime 
-    )
+)
 {
     *stream->GetStream() 
         << Simulator::Now().GetSeconds() 
         << ", "
         << 8 * (rxBytes[flowID] - prevRxBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
-    << std::endl;
-    Simulator::Schedule(Seconds(ReadingResolution), &TraceGoodput, stream,  flowID, rxBytes[flowID], Simulator::Now());
+        << std::endl;
+    Simulator::Schedule(Seconds(0.1), &TraceGoodput, stream,  flowID, rxBytes[flowID], Simulator::Now());
 }
 
-//////////////////////////////////
-//      CONGESTION WINDOW       //
-//////////////////////////////////
-static void
-CwndTracer(
-    Ptr<OutputStreamWrapper> stream, 
-    std::string cca,  
-    uint32_t, 
-    uint32_t newval
-    )
-{
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval /* / packetSize */ << std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
-}
 void
 TraceCwnd(
     uint32_t nodeID, 
     std::string cca
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
-                                  MakeBoundCallback(&CwndTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-cwnd.csv"), cca));
+                                  MakeBoundCallback(&uint32Tracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-cwnd.csv")));
     cwndPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-cwnd.csv");
 }
 
-static void
-PacingTracer(
-    Ptr<OutputStreamWrapper> stream, 
-    std::string cca,  
-    DataRate, 
-    DataRate newval
-    )
-{
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << (double)newval.GetBitRate() / (double)1000000<< std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
-}
 void
 TracePacing(
     uint32_t nodeID, 
     std::string cca
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/PacingRate", 
-                                  MakeBoundCallback(&PacingTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-pacing.csv"), cca));
+                                  MakeBoundCallback(&DataRateTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-pacing.csv")));
     pacingPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-pacing.csv");
 }
 
-
-//////////////////////////////////
-//      INFLIGHT HI             //
-//////////////////////////////////
-static void
-wildcardTracer(
-    Ptr<OutputStreamWrapper> stream, 
-    std::string cca,  
-    uint32_t, 
-    uint32_t newval
-    )
-{
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval /* / packetSize */ << std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
-}
 void
 TraceWildCard(
     uint32_t nodeID, 
     std::string cca
-    )
+)
 {
-    ///NodeList/[i]/$ns3::TcpL4Protocol/SocketList/[i]/CongestionOps/$ns3::TcpBbr
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/wildcard", 
-                                  MakeBoundCallback(&wildcardTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-wildcard.csv"), cca));
+                                  MakeBoundCallback(&uint32Tracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-wildcard.csv")));
     wildcardFilenames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-wildcard.csv");
 }
 
-
-
-//////////////////////////////////
-//          RT PROP              //
-//////////////////////////////////
 void
-RTpropTracer(
-    Ptr<OutputStreamWrapper> stream,  
-    Time oldval, 
-    Time newval
-    )
+TraceInfligtHi(
+    uint32_t nodeID, 
+    std::string cca
+)
 {
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
+                                  "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/inflight_hi", 
+                                  MakeBoundCallback(&uint32Tracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-inflight_hi.csv")));
+    inflightHiFilenames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-inflight_hi.csv");
 }
+
 void
 TraceRTprop(
     uint32_t nodeID, 
     std::string cca
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/rt_prop", 
-                                  MakeBoundCallback(&RTpropTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-rtprop.csv")));
+                                  MakeBoundCallback(&TimeTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-rtprop.csv")));
     rtPropPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-rtprop.csv");
 
 }
 
-//////////////////////////////////
-//          RTT TRACER          //
-//////////////////////////////////
-void
-RTTTracer(
-    Ptr<OutputStreamWrapper> stream,  
-    Time oldval, 
-    Time newval
-    )
-{
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
-}
 void
 TraceRTT(
     uint32_t nodeID, 
     std::string cca
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
-                                  MakeBoundCallback(&RTTTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-rtt.csv")));
+                                  MakeBoundCallback(&TimeTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-rtt.csv")));
     rttPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-rtt.csv");
 
 }
 
-//////////////////////////////////
-//            IGNORE            //
-//////////////////////////////////
-void 
-RWNDTracer(
-    Ptr<OutputStreamWrapper> stream,
-    DataRate, 
-    DataRate newSize
-    ) 
-{
-    //std::cout << "Queue size: " << newSize << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newSize.GetBitRate() << std::endl;
-}
-
-void
-RWNDTrace(
-    uint32_t nodeID,
-    std::string cca
-    )
-{
-    // "/NodeList/[i]/$ns3::TcpL4Protocol/SocketList/[i]/CongestionOps/$ns3::TcpBbr"
-    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
-                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionOps/$ns3::TcpBbr/DataRate", 
-                                  // "/$ns3::TcpL4Protocol/SocketList/0/PacingRate", 
-                                  MakeBoundCallback(&RWNDTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-dr.csv")));
-    rwndPlotFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-dr.csv");
-}
-
-//////////////////////////////////
-//          QUEUE SIZE          //
-//////////////////////////////////
-void 
-QueueSizeTracer(
-    Ptr<OutputStreamWrapper> stream,
-    uint32_t, 
-    uint32_t newSize
-    ) 
-{
-    //std::cout << "Queue size: " << newSize << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newSize << std::endl;
-}
 void
 QueueSizeTrace(
     uint32_t nodeID,
     uint32_t deviceID
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                   "/DeviceList/" + std::to_string(deviceID) + 
                                   "/$ns3::PointToPointNetDevice/TxQueue/PacketsInQueue", 
-                                  MakeBoundCallback(&QueueSizeTracer, ascii.CreateFileStream("zlogs/queueSize.csv")));
+                                  MakeBoundCallback(&uint32Tracer, ascii.CreateFileStream("zlogs/queueSize.csv")));
 }
 
-//////////////////////////////////
-//        BYTES IN FLGIHT       //
-//////////////////////////////////
-void 
-BytesInFlightTracer(
-    Ptr<OutputStreamWrapper> stream,
-    uint32_t, 
-    uint32_t newSize
-    ) 
-{
-    //std::cout << "Queue size: " << newSize << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newSize << std::endl;
-}
 void
 BytesInFlightTrace(
     uint32_t nodeID,
     std::string cca
-    )
+)
 {
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
                                 "/$ns3::TcpL4Protocol/SocketList/0/BytesInFlight", 
-                                MakeBoundCallback(&BytesInFlightTracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-bif.csv")));
-    
+                                MakeBoundCallback(&uint32Tracer, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-bif.csv")));
     bytesInFlightFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-bif.csv");
 }
-
-//////////////////////////////////
-//          PACKET DROP         //
-//////////////////////////////////
-void
-packetDrop(
-    Ptr<OutputStreamWrapper> stream,
-    const Ipv4Header &header, 
-    Ptr<const Packet> packet, 
-    ns3::Ipv4L3Protocol::DropReason reason, 
-    Ptr<Ipv4> ipv4, 
-    uint32_t interface
-    )
-{
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", 0" << std::endl;
-}
-
-void
-packetDropTracer(
-    uint32_t nodeID,
-    std::string cca
-    )
-{
-    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
-                                "/$ns3::Ipv4L3Protocol/Drop", 
-                                MakeBoundCallback(&packetDrop, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-pktdrop.csv")));
-    packetDropFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-pktdrop.csv");
-}
-
-
-
 
 void 
 generatePlot( 
@@ -383,16 +302,17 @@ generatePlot(
         fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
         fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
         fprintf(gnuplotPipe, "set key right top vertical\n");
+
         std::string plotCommand = "plot ";
         for (uint32_t i = 0; i < plotFilesnames.size(); i++) {
             // lines linepoints points steps
-        plotCommand += "\"" + plotFilesnames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "\" with steps  lw 0.7 lc '" + colors[i] + "'";
-        if (i != plotFilesnames.size() - 1) 
-            plotCommand += ", ";
+            plotCommand += "\"" + plotFilesnames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "\" with steps  lw 0.7 lc '" + colors[i] + "'";
+            if (i != plotFilesnames.size() - 1) 
+                plotCommand += ", ";
         }  
         fprintf(gnuplotPipe, "%s", plotCommand.c_str());
         fflush(gnuplotPipe);
-        std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
+        //std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
     } else {
         std::cerr << "Error opening gnuplot pipe." << std::endl;
     }
@@ -433,7 +353,7 @@ generateCwndInflight(
         }
         fprintf(gnuplotPipe, "%s", plotCommand.c_str());
         fflush(gnuplotPipe);
-        std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
+        //std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
     } else {
         std::cerr << "Error opening gnuplot pipe." << std::endl;
     }
@@ -444,7 +364,7 @@ static void
 ChangeDelay(
     NetDeviceContainer dev,
     uint32_t delay
-    ) 
+) 
 {
     dev.Get(0)->GetChannel()->GetObject<PointToPointChannel>()->SetAttribute("Delay", StringValue(std::to_string(delay)+"ms"));
 }
@@ -454,7 +374,7 @@ DelayChanger(
     NetDeviceContainer dev,
     uint32_t time,
     uint32_t delay
-    ) 
+) 
 {
     Simulator::Schedule(Seconds(time), &ChangeDelay, dev, delay);
 }
@@ -463,7 +383,7 @@ static void
 ChangeDataRate(
     NetDeviceContainer dev,
     uint32_t datarate
-    ) 
+) 
 {
     Config::Set("/NodeList/" + std::to_string(cca.size()) + 
                 "/DeviceList/0" + 
@@ -478,17 +398,63 @@ DataRateChanger(
     NetDeviceContainer dev,
     double time,
     uint32_t datarate
-    ) 
+) 
 {
     Simulator::Schedule(Seconds(time), &ChangeDataRate, dev, datarate);
 }
 
+
+//////////////////////////////////
+//          DO LATER       //
+//////////////////////////////////
+void
+packetDrop(
+    Ptr<OutputStreamWrapper> stream,
+    const Ipv4Header &header, 
+    Ptr<const Packet> packet, 
+    ns3::Ipv4L3Protocol::DropReason reason, 
+    Ptr<Ipv4> ipv4, 
+    uint32_t interface
+    )
+{
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", 0" << std::endl;
+}
+
+void
+packetDropTracer(
+    uint32_t nodeID,
+    std::string cca
+    )
+{
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + 
+                                "/$ns3::Ipv4L3Protocol/Drop", 
+                                MakeBoundCallback(&packetDrop, ascii.CreateFileStream("zlogs/" + cca + std::to_string(nodeID) + "-pktdrop.csv")));
+    packetDropFilesnames.push_back("zlogs/" + cca + std::to_string(nodeID) + "-pktdrop.csv");
+}
+
+
 void 
 progress(){
+    uint8_t barWidth = 50;
     std::cout << "\033[2K"; // Clear the previous line
     std::cout << "\033[A"; // Move the cursor up one line
     std::cout.flush(); // Flush the output stream
-    std::cout << "Simulation progress: " << std::fixed << std::setprecision(2) << ((Simulator::Now().GetSeconds() / stopTime.GetSeconds())*100) << "%" << std::endl;
+    std::cout << "Simulation progress: [";
+    
+    int progressMade = ((double)barWidth / 100) * ((Simulator::Now().GetSeconds() / stopTime.GetSeconds())*100);
+
+    for (int i = 0; i < barWidth; ++i) {
+        if (i == barWidth/2)
+            std::cout << std::fixed << std::setprecision(2) << ((Simulator::Now().GetSeconds() / stopTime.GetSeconds())*100) << "%";
+        if (i < progressMade) {
+            std::cout << "=";
+        } else if (i == progressMade) {
+            std::cout << ">";
+        } else {
+            std::cout << " ";
+        }
+    }
+    std::cout << "] " << std::endl;
     Simulator::Schedule(Seconds(0.1), &progress);
 }
 
@@ -498,6 +464,9 @@ main(
     char* argv[]
     )
 {
+    if (progressLog)
+        Simulator::Schedule(Seconds(0), &progress);
+
     // linux default send 4096   16384   4194304
     // linux default recv 4096   131072  6291456
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
@@ -506,7 +475,7 @@ main(
     //Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(131072));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     Config::SetDefault("ns3::TcpSocket::InitialSlowStartThreshold", UintegerValue(10)); 
-    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
+    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
     //  Config::SetDefault("ns3::TcpSocket::DelAckTimeout", TimeValue(Seconds(0)));
     Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
     //Config::SetDefault("ns3::TcpSocketBase::WindowScaling", BooleanValue(true));
@@ -516,9 +485,10 @@ main(
     // std::cout << "Bottleneck link queue ............. >  " << std::to_string((bottleneckLinkDataRate * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
     // Config::SetDefault("ns3::FifoQueueDisc::MaxSize", QueueSizeValue (QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay) / packetSize * bdp_multiplier) + "p")));
     // Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize", QueueSizeValue (QueueSize ("34p")));
-    // Config::SetDefault("ns3::FifoQueueDisc::MaxSize", QueueSizeValue (QueueSize ("34p")));
+    Config::SetDefault("ns3::TcpSocketBase::Sack", BooleanValue(true));
 
-    
+    // Config::SetDefault("ns3::FifoQueueDisc::MaxSize", QueueSizeValue (QueueSize ("34p")));
+    //Config::SetDefault("ns3::TcpL4Protocol::RecoveryType", TypeIdValue(TypeId::LookupByName(recovery)));
     NodeContainer senders, receivers, routers;
     senders.Create(cca.size());
     receivers.Create(cca.size());
@@ -529,7 +499,8 @@ main(
     botLink.SetDeviceAttribute("DataRate", StringValue(std::to_string(bottleneckLinkDataRate) + "Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue(std::to_string(bottleneckLinkDelay) + "ms"));
     botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p")));
-    //botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("2p")));
+    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("10p")));
+    std::cout << "Bottleneck link queue ............. >  " << std::to_string(((bottleneckLinkDataRate * 1000 ) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
 
     
     p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
@@ -541,7 +512,6 @@ main(
     p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * p2pLinkDelay / packetSize) * bdp_multiplier) + "p")));
     //p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("2p")));
 
-    //std::cout << "Bottleneck link queue ............. >  " << std::to_string(((bottleneckLinkDataRate * 1000 ) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
 
 
 
@@ -628,8 +598,8 @@ main(
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &BytesInFlightTrace,  senders.Get(i)->GetId(), cca[i]);
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceWildCard,  senders.Get(i)->GetId(), cca[i]);
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TracePacing,  senders.Get(i)->GetId(), cca[i]);
-        //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTprop,  senders.Get(i)->GetId(), cca[i]);
-        //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &RWNDTrace,  senders.Get(i)->GetId(), cca[i]);
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTprop,  senders.Get(i)->GetId(), cca[i]);
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceInfligtHi,  senders.Get(i)->GetId(), cca[i]);
         //Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &packetDropTracer,  senders.Get(i)->GetId(), cca[i]);
 
 
@@ -646,11 +616,11 @@ main(
     receiverApp.Start(Seconds(0.1));
     receiverApp.Stop(stopTime);
     std::cout << "Running simulation" << std::endl;
-    if (progressLog)
-        Simulator::Schedule(Seconds(0), &progress);
+    
+
+
 
     FlowMonitorHelper flowmonHelperSender;
-
     for (uint32_t i = 0; i < senders.GetN(); i++) {
         Ptr<FlowMonitor> flowMonitorS = flowmonHelperSender.Install(senders.Get(i));     
         rxBytes.push_back(0);
@@ -665,6 +635,7 @@ main(
     FlowMonitorHelper flowmonHelper;
     flowMonitor = flowmonHelper.InstallAll();
     
+    //DataRateChanger(senderDevices, 7, 20);
     //DelayChanger(senderDevices, 11, 50);
     //DelayChanger(senderDevices, 45, 5);
 
@@ -679,8 +650,8 @@ main(
     generatePlot(throughputPlotFilesnames, "Throughput", "Throughput (Mbps)");
     generatePlot(goodputPlotFilesnames, "Goodput", "Goodput (Mbps)");
     generatePlot(pacingPlotFilesnames, "Pacing", "Pacing (Mbps)");
-    //generatePlot(rwndPlotFilesnames, "RWND", "RWND (bytes)");
-    generatePlot(rtPropPlotFilesnames, "RT Propagation", "RT Propagation (ms)");
+    generatePlot(inflightHiFilenames, "InflightHi", "bytes");
+    //generatePlot(rtPropPlotFilesnames, "RT Propagation", "RT Propagation (ms)");
     generatePlot(bytesInFlightFilesnames, "BytesInFlight", "BytesInFlight (bytes)");
     //generatePlot(packetDropFilesnames , "Packets Dropped", "Packets (segments)");
     generateCwndInflight(cwndPlotFilesnames, bytesInFlightFilesnames, "Congestion Window and Bytes In Flight", "Bytes");
@@ -688,23 +659,24 @@ main(
     temp.push_back("zlogs/queueSize.csv");
     generatePlot(temp, "Queue Size", "Queue Size (packets)");
     Simulator::Destroy();
-    //cleans up the csv files
 
+    //cleans up the csv files
     if (cleanup)
         for (uint32_t i = 0; i < cca.size(); i++)
         {
-            remove((cwndPlotFilesnames[i]).c_str());
+            //remove((cwndPlotFilesnames[i]).c_str());
             remove((rttPlotFilesnames[i]).c_str());
             remove((throughputPlotFilesnames[i]).c_str());
             //remove((rwndPlotFilesnames[i]).c_str());
             //remove((pacingPlotFilesnames[i]).c_str());
             remove((goodputPlotFilesnames[i]).c_str());
             remove((bytesInFlightFilesnames[i]).c_str());
-            //remove((wildcardFilenames[i]).c_str());
+            remove((wildcardFilenames[i]).c_str());
+            //remove((inflightHiFilenames[i]).c_str());
+            
             //remove((packetDropFilesnames[i]).c_str());
         }
     remove((temp[0]).c_str());
     exit(0);
 }
-
 
