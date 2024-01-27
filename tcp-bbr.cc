@@ -12,7 +12,6 @@ namespace ns3
 NS_LOG_COMPONENT_DEFINE("TcpBbr");
 NS_OBJECT_ENSURE_REGISTERED(TcpBbr);
 
-//const double TcpBbr::PACING_GAIN_CYCLE[] = {5.0 / 4,  91.0 / 100, 96.0 / 100, 96.0 / 100 };
 const double TcpBbr::PACING_GAIN_CYCLE[] = {5.0 / 4,  91.0 / 100, 1, 1 };
 
 TypeId
@@ -23,11 +22,11 @@ TcpBbr::GetTypeId()
             .SetParent<TcpCongestionOps>()
             .AddConstructor<TcpBbr>()
             .SetGroupName("Internet")
-            .AddTraceSource("inflight_hi",
+            .AddTraceSource("inflightHi",
                 "infliht hi",
                 MakeTraceSourceAccessor(&TcpBbr::m_inflightHi),
                 "ns3::TracedValueCallback::Uint32")
-            .AddTraceSource("inflight_lo",
+            .AddTraceSource("inflightLo",
                 "infliht low",
                 MakeTraceSourceAccessor(&TcpBbr::m_inflightLo),
                 "ns3::TracedValueCallback::Uint32")
@@ -35,6 +34,10 @@ TcpBbr::GetTypeId()
                 "rt prop",
                 MakeTraceSourceAccessor(&TcpBbr::m_rtProp),
                 "ns3::TracedValueCallback::Time")
+            .AddTraceSource("maxBw",
+                "Maximum bw estimate",
+                MakeTraceSourceAccessor(&TcpBbr::maxBw),
+                "ns3::TracedValueCallback::Uint32")
             .AddTraceSource("wildcard",
                 "wild card value",
                 MakeTraceSourceAccessor(&TcpBbr::wildcard),
@@ -206,10 +209,10 @@ TcpBbr::bbr_is_probing_bandwidth(Ptr<TcpSocketState> tcb)
 }
 
 void
-TcpBbr::SetPacingRate(Ptr<TcpSocketState> tcb, double gain)
+TcpBbr::bbr_set_pacing_rate(Ptr<TcpSocketState> tcb, double gain)
 {
     NS_LOG_FUNCTION(this << tcb << gain);
-    DataRate rate((gain * bbr_bw().GetBitRate()) / 100 * 98); //  
+    DataRate rate((gain * bbr_bw().GetBitRate()) / 100 * 99); //  margin 
     rate = std::min(rate, tcb->m_maxPacingRate);
     if (!m_hasSeenRtt && tcb->m_minRtt != Time::Max())
         InitPacingRate(tcb);
@@ -223,18 +226,21 @@ TcpBbr::bbr_init_lower_bounds(Ptr<TcpSocketState> tcb, bool init_bw)
 {
     if (init_bw && m_bwLo == std::numeric_limits<int>::max ())
         m_bwLo = bbr_max_bw();
-    if (m_inflightLo == std::numeric_limits<uint32_t>::max ())
+    if (m_inflightLo == std::numeric_limits<int>::max ())
         m_inflightLo = tcb->m_cWnd.Get();   
 }
 
 void
-TcpBbr::bbr_loss_lower_bounds(Ptr<TcpSocketState> tcb, DataRate *bw, uint32_t *inflight)
+TcpBbr::bbr_loss_lower_bounds(Ptr<TcpSocketState> tcb)
 {
-    *bw =  std::max<DataRate>(m_bwLatest, DataRate(m_bwLo.GetBitRate() * (1 - bbr_beta)));
-    *inflight = std::max<uint32_t>(m_inflightLatest, m_inflightLo * (1 - bbr_beta));
+    // m_bwLo =  std::max<DataRate>(m_bwLatest, DataRate(m_bwLo.GetBitRate() * (1 - bbr_beta)));
+    // m_inflightLo = std::max<uint32_t>(m_inflightLatest, m_inflightLo * (1 - bbr_beta));
+
+    m_bwLo = DataRate(m_bwLo.GetBitRate() * (1 - bbr_beta));
+    m_inflightLo = m_inflightLo * (1 - bbr_beta);
 }
 
-uint32_t
+uint32_t 
 TcpBbr::bbr_inflight(Ptr<TcpSocketState> tcb, DataRate bw, double gain)
 {
     NS_LOG_FUNCTION(this << tcb << gain);
@@ -299,6 +305,8 @@ TcpBbr::bbr_probe_inflight_hi_upward(Ptr<TcpSocketState> tcb, const TcpRateOps::
     m_bwProbeUpAcks += rs.m_ackedSacked;
     if (m_bwProbeUpAcks >= m_bwProbeUpCount)
     {
+        if (m_bwProbeUpCount ==0)
+        return;
         uint32_t delta = m_bwProbeUpAcks / m_bwProbeUpCount;
         m_bwProbeUpAcks -= delta * m_bwProbeUpCount;
         m_inflightHi += delta;
@@ -331,7 +339,7 @@ uint32_t
 TcpBbr::bbr_inflight_with_headroom()
 {
     NS_LOG_FUNCTION (this);
-    if (m_inflightHi == std::numeric_limits<uint32_t>::max ())
+    if (m_inflightHi == std::numeric_limits<int>::max ())
         return std::numeric_limits<int>::max ();
 
     uint32_t headroom = (m_inflightHi * bbr_inflight_headroom) ;
@@ -382,7 +390,7 @@ TcpBbr::bbr_check_time_to_cruise(Ptr<TcpSocketState> tcb,  const TcpRateOps::Tcp
     
     if (rs.m_priorInFlight > bbr_inflight_with_headroom())
         return false;
-    return rs.m_priorInFlight <= bbr_inflight(tcb, bw, 1) ; //|| (Simulator::Now () - m_cycleStamp) > m_rtProp; // replace with the bbr version later
+    return rs.m_priorInFlight <= bbr_inflight(tcb, bw, 1);
 }
 
 
@@ -427,7 +435,7 @@ void
 TcpBbr::bbr_start_bw_probe_cruise()
 {
     m_cycleStamp = Simulator::Now();
-    if (m_inflightLo != std::numeric_limits<uint32_t>::max ())
+    if (m_inflightLo != std::numeric_limits<int>::max ())
         m_inflightLo = std::min(m_inflightLo.Get(), m_inflightHi.Get());
     bbr_set_cycle_idx(BBR_BW_PROBE_CRUISE);
 }
@@ -468,8 +476,6 @@ TcpBbr::bbr_update_cycle_phase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRat
     if (m_state != BbrMode_t::BBR_PROBE_BW)
         return;
 
-    bool isFullLength = (Simulator::Now () - m_cycleStamp) > m_rtProp;
-
     //inflight = tcb->m_bytesInFlight; //bbr_packets_in_net_at_edt(tcb, rs.m_priorDelivered); not implemented assuming rs.m_priorInFlight is adequate enough
     inflight = rs.m_priorInFlight;
     bw = bbr_max_bw();
@@ -486,22 +492,20 @@ TcpBbr::bbr_update_cycle_phase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRat
             {
                 m_bwProbeSamples = 1;
                 bbr_start_bw_probe_up(tcb, rs, ctx);
-            }   
+            }     
             break;
 
         case BBR_BW_PROBE_UP:
-            if (m_prevProbeTooHigh && inflight  >= m_inflightHi) {
-                std::cout << "Probe too high" << std::endl;
+            if (m_prevProbeTooHigh && inflight >= m_inflightHi) {
                 m_stoppedRiskyProbe = true;
             } else {
                 if (inflight >= bbr_inflight(tcb, bw, m_pacingGain)) {
-                    std::cout << "inflight reached 1.25" << std::endl;
                     bbr_reset_full_bw();
                     m_fullBandwidth = ctx->sample_bw;
                     is_bw_probe_done = true;
                 } 
                 else if (m_fullBandwidthNow) {
-                    //is_bw_probe_done = true;
+                    is_bw_probe_done = true;
                 }
             } 
             if (m_stoppedRiskyProbe || is_bw_probe_done)
@@ -533,7 +537,8 @@ TcpBbr::bbr_update_latest_delivery_signals(Ptr<TcpSocketState> tcb,  const TcpRa
 
     m_bwLatest = std::max<DataRate>(m_bwLatest, ctx->sample_bw);    ////// CHECK THIS
     m_inflightLatest = std::max<uint32_t>(m_inflightLatest, rs.m_delivered);
-    
+    //m_inflightLatest =  rs.m_delivered;
+
     if (rs.m_priorDelivered >= m_lossRoundDelivered) // equivalent to !before
     {
         m_lossRoundDelivered = m_delivered;
@@ -552,7 +557,6 @@ void
 TcpBbr::bbr_check_full_bw_reached(const TcpRateOps::TcpRateSample& rs, const struct bbr_context *ctx)
 {
     NS_LOG_FUNCTION(this << rs);
-    uint32_t full_cnt = 3;// 3 and should stay that way REPLACE CONSTANT WITH PARAMETER 
 
     if (m_fullBandwidthNow || rs.m_isAppLimited || !m_roundStart)
         return;
@@ -566,7 +570,7 @@ TcpBbr::bbr_check_full_bw_reached(const TcpRateOps::TcpRateSample& rs, const str
     }
 
     m_fullBandwidthCount++;
-    m_fullBandwidthNow = m_fullBandwidthCount >= full_cnt;
+    m_fullBandwidthNow = m_fullBandwidthCount >= bbr_full_bw_cnt;
     m_fullBwReached |= m_fullBandwidthNow;
 }
 
@@ -583,6 +587,7 @@ TcpBbr::bbr_check_drain(Ptr<TcpSocketState> tcb)
     NS_LOG_FUNCTION(this << tcb);
     if (m_state == BBR_STARTUP && m_fullBwReached)
     {
+        std::cout << "exit STARTUP at time " << Now().GetSeconds() << std::endl;
         m_state = BBR_DRAIN;	
         tcb->m_ssThresh = bbr_inflight(tcb, bbr_max_bw(), 1);
         bbr_reset_congestion_signals();
@@ -686,7 +691,7 @@ void
 TcpBbr::bbr_save_cwnd(Ptr<const TcpSocketState> tcb)
 {
     NS_LOG_FUNCTION(this << tcb);
-    if (tcb->m_congState != TcpSocketState::CA_RECOVERY && m_state != BbrMode_t::BBR_PROBE_RTT)
+    if (m_prevState != TcpSocketState::CA_RECOVERY && m_state != BbrMode_t::BBR_PROBE_RTT)
         m_priorCwnd = tcb->m_cWnd;
     else
         m_priorCwnd = std::max(m_priorCwnd, tcb->m_cWnd.Get());
@@ -696,6 +701,7 @@ void
 TcpBbr::RestoreCwnd(Ptr<TcpSocketState> tcb)
 {
     NS_LOG_FUNCTION(this << tcb);
+    std::cout << "Restoring cwnd to " << m_priorCwnd << " at time " << Now().GetSeconds()<< std::endl;
     tcb->m_cWnd = std::max(m_priorCwnd, tcb->m_cWnd.Get());
 }
 
@@ -773,6 +779,14 @@ TcpBbr::bbr_update_ack_aggregation(Ptr<TcpSocketState> tcb, const TcpRateOps::Tc
     }
 }
 
+void
+TcpBbr::bbr_exit_loss_recovery(Ptr<TcpSocketState> tcb) 
+{
+    tcb->m_cWnd = std::max(tcb->m_cWnd.Get(), m_priorCwnd);
+    m_packetConservation = true;
+	m_tryFastPath = 0; 
+}
+
 bool
 TcpBbr::ModulateCwndForRecovery(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs)
 {
@@ -792,15 +806,14 @@ TcpBbr::ModulateCwndForRecovery(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRa
 }
 
 void
-TcpBbr::SetCwnd(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs)
+TcpBbr::bbr_set_cwnd(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs)
 {
     NS_LOG_FUNCTION(this << tcb << rs);
     UpdateTargetCwnd(tcb);
 
     if (!rs.m_ackedSacked)
-    {
         goto done;
-    }
+    
 
     if (tcb->m_congState == TcpSocketState::CA_RECOVERY)
     {
@@ -823,9 +836,7 @@ TcpBbr::SetCwnd(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs)
     }
 done:
     if (m_state == BbrMode_t::BBR_PROBE_RTT)
-        tcb->m_cWnd = std::min(tcb->m_cWnd.Get(), bbr_probe_rtt_cwnd(tcb));
-        //tcb->m_cWnd = std::min(tcb->m_cWnd.Get(), m_minPipeCwnd);
-    
+        tcb->m_cWnd = std::min(tcb->m_cWnd.Get(), bbr_probe_rtt_cwnd(tcb));    
 }
 
 uint32_t
@@ -907,7 +918,7 @@ TcpBbr::bbr_adapt_upper_bounds(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRat
 
     if (m_ackPhase == BbrAckPhase_t::BBR_ACKS_PROBE_STOPPING && m_roundStart) 
     {
-        m_bwProbeSamples = 1;
+        m_bwProbeSamples = 0;
         m_ackPhase = BbrAckPhase_t::BBR_ACKS_INIT;
         if (m_state == BbrMode_t::BBR_PROBE_BW && !rs.m_isAppLimited)
             bbr_advance_max_bw_filter();
@@ -925,7 +936,7 @@ TcpBbr::bbr_adapt_upper_bounds(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRat
                 bbr_handle_inflight_too_high(tcb, rs);
     } else {
 
-        if (m_inflightHi == std::numeric_limits<uint32_t>::max ())
+        if (m_inflightHi == std::numeric_limits<int>::max ())
             return false;
 
         if (tcb->m_bytesInFlight > m_inflightHi) 
@@ -956,9 +967,8 @@ TcpBbr::bbr_adapt_lower_bounds(Ptr<TcpSocketState> tcb,  const TcpRateOps::TcpRa
     if (m_lossInRound)  
     {
         bbr_init_lower_bounds(tcb, true);
-        uint32_t temp = m_inflightLo.Get();
-        bbr_loss_lower_bounds(tcb, &m_bwLo, &temp);
-        m_inflightLo = temp;
+        bbr_loss_lower_bounds(tcb);
+        //std::cout << "Inflight Lo: " << m_inflightLo.Get() << std::endl;
     }
 
     // m_inflightLo = min(m_inflightLo, ecn_inflight_lo);  afetr ecn is implemented
@@ -970,7 +980,7 @@ TcpBbr::bbr_reset_congestion_signals()
 {
     m_lossInRound = false;
     m_ecnInRound = false;  
-    m_lossInCycle = false;
+    //m_lossInCycle = false;
     m_ecn_in_cycle = false;
     m_bwLatest = 0;
     m_inflightLatest = 0;
@@ -981,7 +991,8 @@ TcpBbr::bbr_calculate_bw_sample(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRa
 {
     NS_LOG_FUNCTION(this << tcb << rs << ctx);
 
-
+    if (rs.m_interval == Seconds(0) || rs.m_delivered == 0)
+    return;
 	ctx->sample_bw = rs.m_deliveryRate;
 }
 
@@ -1032,6 +1043,15 @@ TcpBbr::bbr_check_loss_too_high_in_startup(Ptr<TcpSocketState> tcb, const TcpRat
     if (rs.m_bytesLoss > 0 && m_lossEventsInRound < 15)
         m_lossEventsInRound++;
     
+    // if (m_state == BbrMode_t::BBR_STARTUP){
+    //     std::cout << "start" << std::endl;
+    //     std::cout << "Loss round start " << m_lossRoundStart << std::endl;
+    //     std::cout << "tcb->m_congState == TcpSocketState::CA_RECOVERY " << tcb->m_congState  << std::endl;
+    //     std::cout << "m_lossEventsInRound >= bbr_full_loss_cnt "<< m_lossEventsInRound << " " << bbr_full_loss_cnt << std::endl;
+    //     std::cout << "bbr_is_inflight_too_high(tcb, rs)" << bbr_is_inflight_too_high(tcb, rs) <<" " << rs.m_bytesLoss << " " << (tcb->m_bytesInFlight.Get() / 100 * 2) << std::endl;
+
+    // }
+
     if (m_lossRoundStart 
         && tcb->m_congState == TcpSocketState::CA_RECOVERY 
         && m_lossEventsInRound >= bbr_full_loss_cnt 
@@ -1047,12 +1067,23 @@ TcpBbr::bbr_check_loss_too_high_in_startup(Ptr<TcpSocketState> tcb, const TcpRat
 }
 
 void 
+TcpBbr::bbr_advance_latest_delivery_signals(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, struct bbr_context *ctx)
+{
+    	if (m_lossRoundStart) {
+		m_bwLatest = ctx->sample_bw;
+		m_inflightLatest = rs.m_delivered;
+	}
+}
+
+void 
 TcpBbr::bbr_handle_queue_too_high_in_startup(Ptr<TcpSocketState> tcb)
 {
     NS_LOG_FUNCTION(this << tcb);
+    std::cout << "Queue too high in startup" << std::endl;
     m_fullBwReached = true;
     uint32_t bdp = bbr_inflight(tcb, bbr_max_bw(), 1);
-    m_inflightHi = std::max<uint32_t>(bdp, m_inflightLatest);
+    //m_inflightHi = std::max<uint32_t>(bdp, m_inflightLatest);
+    m_inflightHi = bdp; 
 }
 
 
@@ -1103,6 +1134,8 @@ TcpBbr::HasCongControl() const
     return true;
 }
 
+
+
 void
 TcpBbr::bbr_update_gains()
 {
@@ -1138,21 +1171,16 @@ TcpBbr::bbr_main(Ptr<TcpSocketState> tcb,
                     const TcpRateOps::TcpRateSample& rs)
 {
     NS_LOG_FUNCTION(this << tcb << rs);
-    if (rs.m_bytesLoss > 0)
-         std::cout << "LOSS " << rs.m_bytesLoss << " AT TIME  "  << Now().GetSeconds() << std::endl;
+    //if (rs.m_bytesLoss > 0)
+         //std::cout << "LOSS " << rs.m_bytesLoss << " AT TIME  "  << Now().GetSeconds() << " "<< BbrCycleName[m_cycleIndex] << std::endl;
 
-    //if (m_roundStart)
-        //std::cout << "round start " << bbr_full_bw_reached() << " Time  " << Now().GetSeconds() << std::endl;
-    //     if (startedAfter)
-    //         std::cout << "time " << Now().GetSeconds() << " full bw reached " << m_fullBwReached << "  m_state " << BbrModeName[m_state] << "  cycle index " << BbrCycleName[m_cycleIndex] << std::endl;
-    // //std::cout << "m_state " << BbrModeName[m_state] << "  cycle index " << BbrCycleName[m_cycleIndex] << " pacing gain " << m_pacingGain << std::endl;
     struct bbr_context ctx = { 0 };
     
     m_delivered = rc.m_delivered;
     m_txItemDelivered = rc.m_txItemDelivered;
     //std::cout << "rs D " << rs.m_delivered << "  m_delivered " << m_delivered << std::endl;
-    
-    //std::cout << m_lossRoundStart << std::endl;
+    maxBw = bbr_max_bw().GetBitRate();
+    //std::cout << "inflight lo " << m_inflightHi << " at time  " << Now().GetSeconds() << std::endl;
 
     bbr_update_round_start(tcb, rs);
   
@@ -1164,24 +1192,26 @@ TcpBbr::bbr_main(Ptr<TcpSocketState> tcb,
 
     bbr_update_gains();
 
-    wildcard = m_state;
+    wildcard = m_lossRoundStart;
     
 
-    SetPacingRate(tcb, m_pacingGain);
+    bbr_set_pacing_rate(tcb, m_pacingGain);
     SetSendQuantum(tcb);
-    SetCwnd(tcb, rs);
+    bbr_set_cwnd(tcb, rs);
 
 
     bbr_bound_cwnd_for_inflight_model(tcb);
 
+    bbr_advance_latest_delivery_signals(tcb, rs, &ctx);
+
+	//m_prevState = tcb->m_congState;
 }
 
 void
 TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCongState_t newState)
 {
     NS_LOG_FUNCTION(this << tcb << newState);
-    if (newState == TcpSocketState::CA_OPEN && !m_isInitialized)
-    {
+    if (newState == TcpSocketState::CA_OPEN && !m_isInitialized) {
         if (Now().GetSeconds() > 5){
             startedAfter = true;
         }
@@ -1203,21 +1233,21 @@ TcpBbr::CongestionStateSet(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCon
         InitPacingRate(tcb);
         
         m_isInitialized = true;
-    }
-    else if (newState == TcpSocketState::CA_LOSS)
-    {
+    } else if (newState == TcpSocketState::CA_LOSS) {
         bbr_save_cwnd(tcb);
+        m_prevState = TcpSocketState::CA_LOSS;
         m_roundStart = true;
+        bbr_reset_full_bw();
         if (bbr_is_probing_bandwidth(tcb) && m_inflightLo == std::numeric_limits<int>::max ())
         {
           m_inflightLo = m_priorCwnd;
         }
-    }
-    else if (newState == TcpSocketState::CA_RECOVERY)
-    {
+    } else if (m_prevState == TcpSocketState::CA_LOSS && newState == TcpSocketState::CA_LOSS) {
+		bbr_exit_loss_recovery(tcb);
+	}  
+    else if (newState == TcpSocketState::CA_RECOVERY) {
         bbr_save_cwnd(tcb);
-        tcb->m_cWnd =
-            tcb->m_bytesInFlight.Get() + std::max(tcb->m_lastAckedSackedBytes, tcb->m_segmentSize);
+        tcb->m_cWnd = tcb->m_bytesInFlight.Get() + std::max(tcb->m_lastAckedSackedBytes, tcb->m_segmentSize);
         m_packetConservation = true;
     }
 }
@@ -1228,11 +1258,12 @@ TcpBbr::CwndEvent(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCAEvent_t ev
     NS_LOG_FUNCTION(this << tcb << event);
     if (event == TcpSocketState::CA_EVENT_COMPLETE_CWR)
     {
-        NS_LOG_DEBUG("CwndEvent triggered to CA_EVENT_COMPLETE_CWR :: " << event);
-        m_packetConservation = false;
-        RestoreCwnd(tcb);
+    //     NS_LOG_DEBUG("CwndEvent triggered to CA_EVENT_COMPLETE_CWR :: " << event);
+         m_packetConservation = false;
+    //     RestoreCwnd(tcb);
     }
-    else if (event == TcpSocketState::CA_EVENT_TX_START && m_appLimited)
+    else 
+    if (event == TcpSocketState::CA_EVENT_TX_START && m_appLimited)
     {
         NS_LOG_DEBUG("CwndEvent triggered to CA_EVENT_TX_START :: " << event);
         m_idleRestart = true;
@@ -1240,7 +1271,7 @@ TcpBbr::CwndEvent(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCAEvent_t ev
         m_ackEpochAcked = 0;
         if (m_state == BbrMode_t::BBR_PROBE_BW)
         {
-            SetPacingRate(tcb, 1);
+            bbr_set_pacing_rate(tcb, 1);
         }
         else if (m_state == BbrMode_t::BBR_PROBE_RTT)
         {
