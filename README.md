@@ -9,13 +9,13 @@ BBRv3 uses a model-based approach to congestion control, estimating the bottlene
 
 In ns-3, BBRv3 is implemented within the internet module. The core implementation can be found in the following files:
 
-- [`tcp-bbrv3.cc`](src/internet/model/tcp-bbrv3.cc): This file contains the main implementation of the BBRv3 algorithm, including the logic for estimating network parameters and adjusting the sending rate.
-- [`tcp-bbrv3.h`](src/internet/model/tcp-bbrv3.h): This header file defines the classes and functions used in the BBRv3 implementation.
+- [`tcp-bbrv3.cc`](src/internet/model/tcp-bbr3.cc): This file contains the main implementation of the BBRv3 algorithm, including the logic for estimating network parameters and adjusting the sending rate.
+- [`tcp-bbrv3.h`](src/internet/model/tcp-bbr3.h): This header file defines the classes and functions used in the BBRv3 implementation.
 
 ### File Locations
 
-- [tcp-bbrv3.cc](src/internet/model/tcp-bbrv3.cc)
-- [tcp-bbrv3.h](src/internet/model/tcp-bbrv3.h)
+- [tcp-bbrv3.cc](src/internet/model/tcp-bbr3.cc)
+- [tcp-bbrv3.h](src/internet/model/tcp-bbr3.h)
 
 ## How to Use BBRv3 in ns-3
 
