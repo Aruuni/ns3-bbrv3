@@ -1,38 +1,16 @@
-/*
- * Copyright (c) 2018 NITK Surathkal
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * Authors: Vivek Jain <jain.vivek.anand@gmail.com>
- *          Viyom Mittal <viyommittal@gmail.com>
- *          Mohit P. Tahiliani <tahiliani@nitk.edu.in>
- */
-
-#ifndef TCPBBR_H
-#define TCPBBR_H
+#ifndef TCPBBR3_H
+#define TCPBBR3_H
 
 #include "ns3/data-rate.h"
 #include "ns3/random-variable-stream.h"
 #include "ns3/tcp-congestion-ops.h"
 #include "ns3/traced-value.h"
-#include "ns3/windowed-filter.h"
+#include "tcp-tx-buffer.h"
 
-class TcpBbrCheckGainValuesTest;
 
 namespace ns3
 {
-
+    class TcpTxBuffer;
 /**
  * \ingroup congestionOps
  *
@@ -41,16 +19,12 @@ namespace ns3
  * This class implement the BBR (Bottleneck Bandwidth and Round-trip propagation time)
  * congestion control type.
  */
-class TcpBbr : public TcpCongestionOps
+class TcpBbr3 : public TcpCongestionOps
 {
   public:
     struct bbr_context {
 	    DataRate sample_bw;
     };
-    /**
-     * \brief The number of phases in the BBR ProbeBW gain cycle.
-     */
-    static const uint8_t GAIN_CYCLE_LENGTH = 8;
 
     /**
      * \brief BBR uses an eight-phase cycle with the given pacing_gain value
@@ -66,13 +40,13 @@ class TcpBbr : public TcpCongestionOps
     /**
      * \brief Constructor
      */
-    TcpBbr();
+    TcpBbr3();
 
     /**
      * Copy constructor.
      * \param sock The socket to copy from.
      */
-    TcpBbr(const TcpBbr& sock);
+    TcpBbr3(const TcpBbr3& sock);
 
     /**
      * \brief BBR has the following 4 modes for deciding how fast to send:
@@ -124,20 +98,34 @@ class TcpBbr : public TcpCongestionOps
 
     void bbr_update_gains(); 
 
+    /**
+     * \brief 
+    */
     void CongControl(Ptr<TcpSocketState> tcb,
                      const TcpRateOps::TcpRateConnection& rc,
                      const TcpRateOps::TcpRateSample& rs) override;
     void CongestionStateSet(Ptr<TcpSocketState> tcb,
                             const TcpSocketState::TcpCongState_t newState) override;
+    void bbr_inflight_hi_from_lost_skb(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
+    void bbr_note_loss(Ptr<TcpSocketState> tcb, uint32_t delivered);
     void CwndEvent(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCAEvent_t event) override;
     uint32_t GetSsThresh(Ptr<const TcpSocketState> tcb, uint32_t bytesInFlight) override;
     Ptr<TcpCongestionOps> Fork() override;
 
   protected:
 
+    /**
+     * \brief Check if its time to probe bandwidth
+     * \param tcb the socket state.
+     */
     bool bbr_check_time_to_probe_bw(Ptr<TcpSocketState> tcb);
 
+    /**
+     * \brief Check if its time to cruise, used to lower the inflight to one bdp while we are in probe_bw down phase
+     * \param tcb the socket state.
+     */
     bool bbr_check_time_to_cruise(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, DataRate bw);  
+
 
     void bbr_start_bw_probe_up(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, const struct bbr_context* ctx);
 
@@ -147,10 +135,20 @@ class TcpBbr : public TcpCongestionOps
 
     void bbr_start_bw_probe_cruise();
 
+    /**
+     * \brief Checks if the wallclock cruise time has elapsed.
+     * \param tcb the socket state.
+     * \param interval the time interval to compare to the cycle stamp.
+     */
     bool bbr_has_elapsed_in_phase(Ptr<TcpSocketState> tcb, Time interval);
 
     bool bbr_is_reno_coexistence_probe_time(Ptr<TcpSocketState> tcb);
 
+    /**
+     * \brief 
+     * \param tcb the socket state.
+     * 
+    */
     uint32_t bbr_probe_rtt_cwnd(Ptr<TcpSocketState> tcb);
 
     void bbr_update_cycle_phase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, const struct bbr_context *ctx);
@@ -201,7 +199,7 @@ class TcpBbr : public TcpCongestionOps
 
     bool bbr_is_inflight_too_high(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
-    void bbr_handle_inflight_too_high(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
+    void bbr_handle_inflight_too_high(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, bool rsmode);
 
     void bbr_probe_inflight_hi_upward(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
@@ -257,18 +255,18 @@ class TcpBbr : public TcpCongestionOps
      * \param tcb the socket state.
      * \param rs  rate sample
      */
-    void SetCwnd(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
+    void bbr_set_cwnd(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
     /**
      * \brief Updates pacing rate based on network model.
      * \param tcb the socket state.
      * \param gain pacing gain.
      */
-    void SetPacingRate(Ptr<TcpSocketState> tcb, double gain);
+    void bbr_set_pacing_rate(Ptr<TcpSocketState> tcb, double gain);
 
     void bbr_init_lower_bounds(Ptr<TcpSocketState> tcb, bool init_bw);
 
-    void bbr_loss_lower_bounds(Ptr<TcpSocketState> tcb, DataRate *bw, uint32_t *inflight);
+    void bbr_loss_lower_bounds(Ptr<TcpSocketState> tcb);
 
     /**
      * \brief Updates send quantum based on the network model.
@@ -280,10 +278,13 @@ class TcpBbr : public TcpCongestionOps
      * \brief Updates maximum bottleneck.
      * \param tcb the socket state.
      * \param rs rate sample.
+     * \param ctx bbr context.
      */
     void bbr_update_congestion_signals(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, struct bbr_context *ctx);
 
     void bbr_check_loss_too_high_in_startup(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
+
+    void bbr_advance_latest_delivery_signals(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs, struct bbr_context *ctx);
 
     void bbr_handle_queue_too_high_in_startup(Ptr<TcpSocketState> tcb);
 
@@ -357,6 +358,8 @@ class TcpBbr : public TcpCongestionOps
      */
     void bbr_update_ack_aggregation(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
 
+    void bbr_exit_loss_recovery(Ptr<TcpSocketState> tcb);
+
   private:
     //  u32	min_rtt_us;	    /* min RTT in min_rtt_win_sec window */
     TracedValue<Time>  m_rtProp{Time::Max()}; //!< Estimated two-way round-trip propagation delay of the path, estimated from the windowed minimum recent round-trip delay sample.
@@ -373,8 +376,8 @@ class TcpBbr : public TcpCongestionOps
     // Time m_probeRtPropStamp{Seconds(0)}; //!< The wall clock time at which the current BBR.RTProp sample was obtained.
     
 
+    TcpSocketState::TcpCongState_t m_prevState{ns3::TcpSocketState::TcpCongState_t::CA_OPEN};
     BbrMode_t m_state{BbrMode_t::BBR_STARTUP}; //!< Current state of BBR state machine
-    
     uint32_t m_bandwidthWindowLength{0}; //!< A constant specifying the length of the BBR.BtlBw max filter window, default 10 packet-timed round trips.
     uint32_t m_bwProbeUpRounds{0}; //!< Number of round trips to probe for bandwidth
     double m_pacingGain{0};              //!< The dynamic pacing gain factor
@@ -416,34 +419,19 @@ class TcpBbr : public TcpCongestionOps
     // bbrv3 states 
 
     bool m_tryFastPath{false}; //!< Try to use fast path
-        // 		full_bw_now:1,		/* recently reached full bw plateau? */
-    bool m_fullBandwidthNow{false};     //!< Recently reached full bandwidth plateau
-	// 	startup_ecn_rounds:2,	/* consecutive hi ECN STARTUP rounds */[]
+    bool m_fullBandwidthNow{false};     //!< Recently reached full bw plateau? 
     uint32_t m_startupEcnRounds{0};     //!< Consecutive high ECN STARTUP rounds
-	// 	loss_in_cycle:1,	/* packet loss in this cycle? */
-    bool m_lossInCycle{false};        //!< Packet loss in this cycle
-	// 	ecn_in_cycle:1,		/* ECN in this cycle? */
-    bool m_ecn_in_cycle{false};       //!<ble ECN in this cycle
-	// unused_3:1;
-	// u32	loss_round_delivered; /* scb->tx.delivered ending loss round */
+    bool m_lossInCycle{false};        //!< Packet loss in this cycle?
+    bool m_ecn_in_cycle{false};       //!< ECN in this cycle?
     uint32_t m_lossRoundDelivered{0};   //!< Delivered packets at the end of loss round
-	// u32	undo_bw_lo;	     /* bw_lo before latest losses */
 	DataRate m_undoBwLo{0};             //!< bw_lo before latest losses
-    // u32	undo_inflight_lo;    /* inflight_lo before latest losses */
     uint32_t m_undoInflightLo{0};       //!< inflight_lo before latest losses
-	// u32	undo_inflight_hi;    /* inflight_hi before latest losses */
     uint32_t m_undoInflightHi{0};       //!< inflight_hi before latest losses
-	// u32	bw_latest;	 /* max delivered bw in last round trip */
     DataRate m_bwLatest{std::numeric_limits<int>::max ()};         //!< Maximum delivered bandwidth in last round trip
-	// u32	bw_lo;		 /* lower bound on sending bandwidth */
     DataRate m_bwLo{std::numeric_limits<int>::max ()};             //!< Lower bound on sending bandwidth
-	// u32	bw_hi[2];	 /* max recent measured bw sample */
-    DataRate bw_hi[2]{0, 0};
-	// u32	inflight_latest; /* max delivered data in last round trip */
+    DataRate bw_hi[2]{0, 0};            //!< max recent measured bw sample 
     uint32_t m_inflightLatest{0};   //!< Maximum delivered data in last round trip
-	// u32	inflight_lo;	 /* lower bound of inflight data range */
 	TracedValue<uint32_t> m_inflightLo{std::numeric_limits<int>::max ()};       //!< Lower bound of inflight data range
-    // u32	inflight_hi;	 /* upper bound of inflight data range */
     TracedValue<uint32_t> m_inflightHi{std::numeric_limits<int>::max ()};       //!< Upper bound of inflight data range
 	// u32	bw_probe_up_cnt; /* packets delivered per inflight_hi incr */
     uint32_t m_bwProbeUpCount{0};   //!< Packets delivered per inflight_hi incr
@@ -457,7 +445,6 @@ class TcpBbr : public TcpCongestionOps
 	// 	ecn_alpha:9,	/* EWMA delivered_ce/delivered; 0..256 */
 	// 	bw_probe_samples:1,    /* rate samples reflect bw probing? */
     uint32_t m_bwProbeSamples{0};       //!< Rate samples reflect bw probing?
-	// 	prev_probe_too_high:1, /* did last PROBE_UP go too high? */
 	bool m_prevProbeTooHigh{false};     //!< Did last PROBE_UP go too high?
     // 	stopped_risky_probe:1, /* last PROBE_UP stopped due to risk? */
 	bool m_stoppedRiskyProbe{false};    //!< Last PROBE_UP stopped due to risk?
@@ -465,8 +452,7 @@ class TcpBbr : public TcpCongestionOps
     bool m_roundsSinceProbe{false}; //!< Packet-timed rounds since probed bw
 	// 	loss_round_start:1,    /* loss_round_delivered round trip? */
     bool m_lossRoundStart{1};       //!< Loss round delivered round trip?
-	// 	loss_in_round:1,       /* loss marked in this round trip? */
-    bool m_lossInRound{false};       //!< Loss marked in this round trip?
+    bool m_lossInRound{1};       //!< Loss marked in this round trip?
 	// 	ecn_in_round:1,	       /* ECN marked in this round trip? */
     bool m_ecnInRound{false};       //!< ECN marked in this round trip?
 	// 	ack_phase:3,	       /* bbr_ack_phase: meaning of ACKs */
@@ -512,7 +498,7 @@ class TcpBbr : public TcpCongestionOps
     const Time bbr_probe_rtt_mode_ms = MilliSeconds(200);
 
     bool startedAfter = false;
-
+    TracedValue<uint32_t> maxBw{0};
     TracedValue<uint32_t> wildcard{0};
 
 };

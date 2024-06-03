@@ -298,7 +298,6 @@ TcpBbr3::bbr_handle_inflight_too_high(Ptr<TcpSocketState> tcb, const TcpRateOps:
     done2:
     if (m_state == BbrMode_t::BBR_PROBE_BW && m_cycleIndex == BBR_BW_PROBE_UP)
     { 
-        COUT ("inflight too high at time " << NOW);  
         bbr_start_bw_probe_down();
     }
 }
@@ -307,7 +306,6 @@ void
 TcpBbr3::bbr_probe_inflight_hi_upward(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs)
 {
     NS_LOG_FUNCTION(this << tcb << rs);
-    //COUT("cwnd" << tcb->m_cWnd << " inflight hi " << m_inflightHi);
     if (tcb->m_cWnd < m_inflightHi)
     {
         m_bwProbeUpAcks = 0;
@@ -512,7 +510,6 @@ TcpBbr3::bbr_update_cycle_phase(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRa
 
         case BBR_BW_PROBE_UP:
             if (m_prevProbeTooHigh && inflight >= m_inflightHi) {
-                COUT("inflight too high at time " << NOW);
                 m_stoppedRiskyProbe = true;
                 is_bw_probe_done = true;
             } else {
@@ -1018,6 +1015,7 @@ TcpBbr3::bbr_pick_probe_wait()
 {
     m_roundsSinceProbe = (uint)m_uv->GetValue(0, 2);
     m_probeWaitTime = Seconds(2) + MilliSeconds(m_uv->GetValue(0, 1000));
+    COUT(m_probeWaitTime.GetSeconds());
 }
 
 
@@ -1096,7 +1094,6 @@ void
 TcpBbr3::bbr_handle_queue_too_high_in_startup(Ptr<TcpSocketState> tcb)
 {
     NS_LOG_FUNCTION(this << tcb);
-    std::cout << "Queue too high in startup" << std::endl;
     m_fullBwReached = true;
     uint32_t bdp = bbr_inflight(tcb, bbr_max_bw(), 1);
     //m_inflightHi = std::max<uint32_t>(bdp, m_inflightLatest);
