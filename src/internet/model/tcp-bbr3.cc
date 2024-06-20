@@ -630,14 +630,14 @@ TcpBbr3::bbr_update_min_rtt(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSa
 {
     NS_LOG_FUNCTION(this << tcb << rs);
     bool probe_rtt_expired = Simulator::Now() > (m_probeRttMinStamp + bbr_probe_rtt_win);
-    if (tcb->m_minRtt >= Seconds(0) && (tcb->m_minRtt < m_probeRttMin || (probe_rtt_expired /* && rs.is ack delayed*/ ))) // rs in ns3 does not store min rtt anywhere but the tcb object does
+    if (tcb->m_lastRtt >= Seconds(0) && (tcb->m_lastRtt < m_probeRttMin || (probe_rtt_expired /* && rs.is ack delayed*/ ))) // rs in ns3 does not store min rtt anywhere but the tcb object does
     {
         m_probeRttMin = tcb->m_minRtt;
         m_probeRttMinStamp = Simulator::Now();
     }
 
     bool min_rtt_expired = Simulator::Now() > (m_rtPropStamp + bbr_min_rtt_win_sec); // some confustion around this 
-    if (m_probeRttMin <= tcb->m_lastRtt || min_rtt_expired)
+    if (m_probeRttMin < tcb->m_lastRtt || min_rtt_expired)
     {
         m_rtProp = m_probeRttMin;
         m_rtPropStamp = m_probeRttMinStamp;
