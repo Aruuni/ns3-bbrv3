@@ -106,8 +106,6 @@ class TcpBbr3 : public TcpCongestionOps
                      const TcpRateOps::TcpRateSample& rs) override;
     void CongestionStateSet(Ptr<TcpSocketState> tcb,
                             const TcpSocketState::TcpCongState_t newState) override;
-    void bbr_inflight_hi_from_lost_skb(Ptr<TcpSocketState> tcb, const TcpRateOps::TcpRateSample& rs);
-    void bbr_note_loss(Ptr<TcpSocketState> tcb, uint32_t delivered);
     void CwndEvent(Ptr<TcpSocketState> tcb, const TcpSocketState::TcpCAEvent_t event) override;
     uint32_t GetSsThresh(Ptr<const TcpSocketState> tcb, uint32_t bytesInFlight) override;
     Ptr<TcpCongestionOps> Fork() override;
